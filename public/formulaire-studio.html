@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudioKay — Proposer mon studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ocre: #C8732A; --ocre-light: #E8943F; --gold: #D4A843;
+  --noir: #0F0D0B; --noir-soft: #1A1713; --brun: #2C2015;
+  --creme: #F5EFE6; --blanc: #FDFAF6; --gris: #8A7B6E;
+  --success: #6BCB77; --danger: #E05050;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Outfit',sans-serif; background:var(--noir); color:var(--creme); min-height:100vh; }
+
+/* ── HEADER ── */
+.header {
+  background:var(--noir-soft);
+  border-bottom:1px solid rgba(245,239,230,0.07);
+  padding:24px 5%;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo { font-family:'Playfair Display',serif; font-size:1.6rem; font-weight:900; }
+.logo span { color:var(--ocre); }
+.header-badge {
+  background:rgba(200,115,42,0.12); border:1px solid rgba(200,115,42,0.25);
+  color:var(--gold); padding:6px 14px; border-radius:20px;
+  font-size:0.78rem; font-weight:600;
+}
+
+/* ── HERO ── */
+.hero {
+  background:linear-gradient(135deg, #1A0800 0%, #3D1A05 50%, #0F0D0B 100%);
+  padding:56px 5% 48px;
+  text-align:center;
+  border-bottom:1px solid rgba(245,239,230,0.06);
+}
+.hero h1 {
+  font-family:'Playfair Display',serif;
+  font-size:clamp(1.8rem,4vw,2.8rem); font-weight:900;
+  margin-bottom:14px;
+}
+.hero h1 em { font-style:italic; color:var(--ocre); }
+.hero p { color:var(--gris); font-size:1rem; max-width:520px; margin:0 auto 28px; line-height:1.7; }
+.hero-badges { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+.hero-badge {
+  display:flex; align-items:center; gap:6px;
+  background:rgba(245,239,230,0.05); border:1px solid rgba(245,239,230,0.1);
+  padding:8px 16px; border-radius:20px; font-size:0.82rem;
+}
+
+/* ── FORM CONTAINER ── */
+.form-container {
+  max-width:720px; margin:0 auto;
+  padding:48px 24px 80px;
+}
+
+/* ── SECTION ── */
+.form-section {
+  background:var(--noir-soft);
+  border:1px solid rgba(245,239,230,0.07);
+  border-radius:16px; padding:28px;
+  margin-bottom:24px;
+}
+.section-title {
+  font-family:'Playfair Display',serif;
+  font-size:1.05rem; font-weight:700;
+  margin-bottom:20px; padding-bottom:14px;
+  border-bottom:1px solid rgba(245,239,230,0.07);
+  display:flex; align-items:center; gap:10px;
+}
+.section-num {
+  background:var(--ocre); color:#fff;
+  width:26px; height:26px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.75rem; font-weight:700; flex-shrink:0;
+}
+
+/* ── FORM ELEMENTS ── */
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.form-group { margin-bottom:16px; }
+.form-group label {
+  display:block; font-size:0.75rem; text-transform:uppercase;
+  letter-spacing:0.1em; color:var(--gris); font-weight:600; margin-bottom:8px;
+}
+.required { color:var(--ocre); margin-left:2px; }
+.form-input, .form-select, .form-textarea {
+  width:100%; background:rgba(245,239,230,0.04);
+  border:1px solid rgba(245,239,230,0.1); border-radius:10px;
+  padding:13px 16px; color:var(--creme);
+  font-family:'Outfit',sans-serif; font-size:0.95rem; outline:none;
+  transition:border-color 0.2s, background 0.2s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color:var(--ocre); background:rgba(245,239,230,0.06);
+}
+.form-select option { background:var(--noir-soft); }
+.form-textarea { resize:vertical; min-height:100px; line-height:1.6; }
+.form-hint { font-size:0.75rem; color:var(--gris); margin-top:6px; }
+
+/* ── TYPE SELECTOR ── */
+.type-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.type-option { position:relative; }
+.type-option input { position:absolute; opacity:0; width:0; height:0; }
+.type-label {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:14px 10px; border-radius:10px; cursor:pointer;
+  border:1px solid rgba(245,239,230,0.1);
+  background:rgba(245,239,230,0.03);
+  transition:all 0.2s; text-align:center;
+}
+.type-label:hover { border-color:rgba(200,115,42,0.4); background:rgba(200,115,42,0.08); }
+.type-option input:checked + .type-label {
+  border-color:var(--ocre); background:rgba(200,115,42,0.15);
+  color:var(--ocre-light);
+}
+.type-icon { font-size:1.5rem; }
+.type-name { font-size:0.8rem; font-weight:600; }
+
+/* ── UPLOAD ZONE ── */
+.upload-zone {
+  border:2px dashed rgba(200,115,42,0.3);
+  border-radius:12px; padding:32px 20px;
+  text-align:center; cursor:pointer;
+  transition:all 0.2s; position:relative;
+  background:rgba(200,115,42,0.03);
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color:var(--ocre); background:rgba(200,115,42,0.08);
+}
+.upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.upload-icon { font-size:2.5rem; margin-bottom:12px; }
+.upload-title { font-size:1rem; font-weight:600; margin-bottom:6px; }
+.upload-sub { font-size:0.82rem; color:var(--gris); }
+.upload-limit {
+  display:inline-block; margin-top:10px;
+  background:rgba(212,168,67,0.1); border:1px solid rgba(212,168,67,0.2);
+  color:var(--gold); padding:3px 10px; border-radius:20px; font-size:0.72rem;
+}
+
+/* ── PREVIEW PHOTOS ── */
+.photos-preview {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr));
+  gap:10px; margin-top:16px;
+}
+.photo-thumb {
+  aspect-ratio:1; border-radius:8px; overflow:hidden;
+  position:relative; border:1px solid rgba(245,239,230,0.1);
+}
+.photo-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.photo-thumb .remove-btn {
+  position:absolute; top:4px; right:4px;
+  background:rgba(224,80,80,0.85); color:#fff;
+  border:none; border-radius:50%; width:22px; height:22px;
+  font-size:0.75rem; cursor:pointer; display:flex;
+  align-items:center; justify-content:center;
+}
+.photo-count {
+  font-size:0.78rem; color:var(--gris); margin-top:8px;
+}
+
+/* ── BUDGET SLIDER ── */
+.price-display {
+  text-align:center;
+  font-family:'Playfair Display',serif;
+  font-size:1.8rem; font-weight:700; color:var(--gold);
+  margin-bottom:12px;
+}
+.price-display span { font-size:0.9rem; color:var(--gris); font-family:'Outfit',sans-serif; }
+input[type=range] {
+  width:100%; -webkit-appearance:none; height:5px;
+  border-radius:3px; background:rgba(245,239,230,0.15); outline:none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:20px; height:20px;
+  border-radius:50%; background:var(--ocre); cursor:pointer;
+  border:2px solid var(--gold);
+}
+.price-labels { display:flex; justify-content:space-between; font-size:0.72rem; color:var(--gris); margin-top:6px; }
+
+/* ── SOURCE PILLS ── */
+.source-grid { display:flex; flex-wrap:wrap; gap:10px; }
+.source-option input { display:none; }
+.source-pill {
+  padding:9px 18px; border-radius:20px; cursor:pointer;
+  border:1px solid rgba(245,239,230,0.12); font-size:0.85rem;
+  background:transparent; transition:all 0.2s; color:var(--creme);
+}
+.source-pill:hover { border-color:var(--ocre); color:var(--ocre-light); }
+.source-option input:checked + .source-pill {
+  background:var(--ocre); border-color:var(--ocre); color:#fff;
+}
+
+/* ── ÉQUIPEMENTS ── */
+.equip-grid { display:flex; flex-wrap:wrap; gap:8px; }
+.equip-option input { display:none; }
+.equip-tag {
+  padding:7px 14px; border-radius:20px; cursor:pointer;
+  border:1px solid rgba(245,239,230,0.1); font-size:0.82rem;
+  background:rgba(245,239,230,0.03); transition:all 0.2s;
+}
+.equip-tag:hover { border-color:rgba(200,115,42,0.4); }
+.equip-option input:checked + .equip-tag {
+  background:rgba(200,115,42,0.15); border-color:var(--ocre); color:var(--ocre-light);
+}
+
+/* ── PROGRESS BAR ── */
+.progress-wrap { margin-bottom:32px; }
+.progress-label { display:flex; justify-content:space-between; font-size:0.78rem; color:var(--gris); margin-bottom:8px; }
+.progress-bar { height:4px; background:rgba(245,239,230,0.08); border-radius:2px; overflow:hidden; }
+.progress-fill { height:100%; background:linear-gradient(90deg,var(--ocre),var(--gold)); border-radius:2px; transition:width 0.4s ease; }
+
+/* ── SUBMIT BTN ── */
+.submit-btn {
+  width:100%; background:linear-gradient(135deg,var(--ocre),var(--ocre-light));
+  color:#fff; border:none; padding:18px; border-radius:12px;
+  font-family:'Outfit',sans-serif; font-size:1.05rem; font-weight:700;
+  cursor:pointer; transition:all 0.3s; margin-top:8px;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  box-shadow:0 8px 24px rgba(200,115,42,0.3);
+}
+.submit-btn:hover { transform:translateY(-2px); box-shadow:0 12px 32px rgba(200,115,42,0.4); }
+.submit-btn:disabled { background:rgba(245,239,230,0.1); color:var(--gris); box-shadow:none; transform:none; cursor:not-allowed; }
+.loading-spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── SUCCESS ── */
+.success-screen {
+  display:none; text-align:center; padding:60px 24px;
+}
+.success-screen .success-icon { font-size:4rem; margin-bottom:20px; }
+.success-screen h2 { font-family:'Playfair Display',serif; font-size:1.8rem; margin-bottom:14px; }
+.success-screen p { color:var(--gris); line-height:1.7; max-width:460px; margin:0 auto 28px; }
+.back-btn {
+  display:inline-block; background:transparent; border:1px solid var(--ocre);
+  color:var(--ocre); padding:12px 28px; border-radius:8px;
+  font-family:'Outfit',sans-serif; font-size:0.95rem; font-weight:600;
+  cursor:pointer; transition:all 0.2s; text-decoration:none;
+}
+.back-btn:hover { background:var(--ocre); color:#fff; }
+
+/* ── ERROR ── */
+.field-error { font-size:0.75rem; color:var(--danger); margin-top:5px; display:none; }
+.form-input.error, .form-select.error, .form-textarea.error { border-color:var(--danger); }
+
+/* ── FOOTER ── */
+.form-footer { text-align:center; margin-top:32px; }
+.form-footer p { font-size:0.78rem; color:var(--gris); }
+.form-footer span { color:var(--ocre-light); }
+
+@media(max-width:600px) {
+  .form-row { grid-template-columns:1fr; }
+  .type-grid { grid-template-columns:repeat(2,1fr); }
+  .hero { padding:36px 5% 32px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">Studio<span>Kay</span></div>
+  <span class="header-badge">🏠 Devenir partenaire</span>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <h1>Proposez votre <em>studio</em></h1>
+  <p>Rejoignez les studios créatifs sur StudioKay et recevez des réservations automatiques 24h/24. Les 10 premiers ont <strong style="color:var(--gold);">6 mois gratuits</strong>.</p>
+  <div class="hero-badges">
+    <span class="hero-badge">🎁 6 mois gratuits</span>
+    <span class="hero-badge">📅 Réservations automatiques</span>
+    <span class="hero-badge">📧 Confirmation par email</span>
+    <span class="hero-badge">📊 Dashboard inclus</span>
+  </div>
+</div>
+
+<!-- FORM -->
+<div class="form-container">
+
+  <!-- Progress -->
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span>Complétion du formulaire</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <form id="studioForm" novalidate>
+
+    <!-- SECTION 1 — Contact -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">1</div> Vos coordonnées</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nom complet <span class="required">*</span></label>
+          <input type="text" class="form-input" id="nom" placeholder="Prénom Nom" required>
+          <div class="field-error" id="err-nom">Veuillez entrer votre nom</div>
+        </div>
+        <div class="form-group">
+          <label>Téléphone <span class="required">*</span></label>
+          <input type="tel" class="form-input" id="tel" placeholder="+221 77 000 0000" required>
+          <div class="field-error" id="err-tel">Numéro requis</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email <span class="required">*</span></label>
+        <input type="email" class="form-input" id="email" placeholder="votre@email.com" required>
+        <div class="field-error" id="err-email">Email invalide</div>
+      </div>
+    </div>
+
+    <!-- SECTION 2 — Studio -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">2</div> Votre studio</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nom du studio <span class="required">*</span></label>
+          <input type="text" class="form-input" id="studioNom" placeholder="Ex: Studio Lumière" required>
+          <div class="field-error" id="err-studioNom">Nom du studio requis</div>
+        </div>
+        <div class="form-group">
+          <label>Ville <span class="required">*</span></label>
+          <select class="form-select" id="ville" required>
+            <option value="">Choisir...</option>
+            <option>Dakar — Almadies</option>
+            <option>Dakar — Plateau</option>
+            <option>Dakar — Mermoz</option>
+            <option>Dakar — Ouakam</option>
+            <option>Dakar — Sacré-Cœur</option>
+            <option>Dakar — Grand-Yoff</option>
+            <option>Dakar — Fann</option>
+            <option>Dakar — Point E</option>
+            <option>Dakar — Liberté 6</option>
+            <option>Dakar — Médina</option>
+            <option>Dakar — Autre</option>
+            <option>Saint-Louis</option>
+            <option>Thiès</option>
+            <option>Ziguinchor</option>
+            <option>Saly</option>
+            <option>Touba</option>
+          </select>
+          <div class="field-error" id="err-ville">Ville requise</div>
+        </div>
+      </div>
+
+      <!-- Type de studio -->
+      <div class="form-group">
+        <label>Type de studio <span class="required">*</span></label>
+        <div class="type-grid">
+          <label class="type-option">
+            <input type="radio" name="type" value="Photo & Vidéo" required>
+            <div class="type-label"><span class="type-icon">📸</span><span class="type-name">Photo & Vidéo</span></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="type" value="Podcast">
+            <div class="type-label"><span class="type-icon">🎙️</span><span class="type-name">Podcast</span></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="type" value="Musique">
+            <div class="type-label"><span class="type-icon">🎵</span><span class="type-name">Musique</span></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="type" value="Clip & Tournage">
+            <div class="type-label"><span class="type-icon">🎬</span><span class="type-name">Clip & Tournage</span></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="type" value="Atelier Créatif">
+            <div class="type-label"><span class="type-icon">🎨</span><span class="type-name">Atelier Créatif</span></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="type" value="Lifestyle">
+            <div class="type-label"><span class="type-icon">✨</span><span class="type-name">Lifestyle</span></div>
+          </label>
+        </div>
+        <div class="field-error" id="err-type">Veuillez choisir un type</div>
+      </div>
+    </div>
+
+    <!-- SECTION 3 — Détails -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">3</div> Détails & équipements</div>
+
+      <!-- Prix slider -->
+      <div class="form-group">
+        <label>Prix à l'heure (XOF) <span class="required">*</span></label>
+        <div class="price-display" id="priceDisplay">15 000 <span>XOF / heure</span></div>
+        <input type="range" id="prixSlider" min="5000" max="100000" step="1000" value="15000" oninput="updatePrice(this.value)">
+        <div class="price-labels"><span>5 000 XOF</span><span>100 000 XOF</span></div>
+        <input type="hidden" id="prix" value="15000">
+      </div>
+
+      <!-- Description -->
+      <div class="form-group">
+        <label>Description du studio <span class="required">*</span></label>
+        <textarea class="form-textarea" id="description" placeholder="Décrivez votre espace : ambiance, particularités, ce qui le rend unique..." required rows="4"></textarea>
+        <div class="field-error" id="err-description">Description requise</div>
+      </div>
+
+      <!-- Équipements -->
+      <div class="form-group">
+        <label>Équipements disponibles</label>
+        <div class="equip-grid">
+          <label class="equip-option"><input type="checkbox" value="Cyclorama blanc"><span class="equip-tag">Cyclorama blanc</span></label>
+          <label class="equip-option"><input type="checkbox" value="Flash Godox"><span class="equip-tag">Flash Godox</span></label>
+          <label class="equip-option"><input type="checkbox" value="Fond papier"><span class="equip-tag">Fond papier</span></label>
+          <label class="equip-option"><input type="checkbox" value="Ring light"><span class="equip-tag">Ring light</span></label>
+          <label class="equip-option"><input type="checkbox" value="Micro Shure SM7B"><span class="equip-tag">Micro Shure SM7B</span></label>
+          <label class="equip-option"><input type="checkbox" value="Console de mixage"><span class="equip-tag">Console de mixage</span></label>
+          <label class="equip-option"><input type="checkbox" value="Cabine insonorisée"><span class="equip-tag">Cabine insonorisée</span></label>
+          <label class="equip-option"><input type="checkbox" value="Pro Tools"><span class="equip-tag">Pro Tools</span></label>
+          <label class="equip-option"><input type="checkbox" value="Caméra 4K"><span class="equip-tag">Caméra 4K</span></label>
+          <label class="equip-option"><input type="checkbox" value="Fond vert"><span class="equip-tag">Fond vert</span></label>
+          <label class="equip-option"><input type="checkbox" value="Éclairage cinéma"><span class="equip-tag">Éclairage cinéma</span></label>
+          <label class="equip-option"><input type="checkbox" value="Loge privée"><span class="equip-tag">Loge privée</span></label>
+          <label class="equip-option"><input type="checkbox" value="Climatisation"><span class="equip-tag">Climatisation</span></label>
+          <label class="equip-option"><input type="checkbox" value="Rooftop"><span class="equip-tag">Rooftop</span></label>
+          <label class="equip-option"><input type="checkbox" value="Wifi haut débit"><span class="equip-tag">Wifi haut débit</span></label>
+          <label class="equip-option"><input type="checkbox" value="Parking"><span class="equip-tag">Parking</span></label>
+        </div>
+        <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+          <label>Autre équipement</label>
+          <input type="text" class="form-input" id="autreEquip" placeholder="Ex: Piano, Console Neve, Prompteur...">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4 — Photos -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">4</div> Photos de votre studio</div>
+      <p style="font-size:0.85rem;color:var(--gris);margin-bottom:16px;line-height:1.6;">
+        Ajoutez entre 3 et 10 photos de votre studio. Des photos lumineuses et nettes augmentent vos chances de réservation.
+      </p>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="photosInput" accept="image/jpeg,image/png,image/webp" multiple>
+        <div class="upload-icon">📸</div>
+        <div class="upload-title">Glissez vos photos ici</div>
+        <div class="upload-sub">ou cliquez pour sélectionner depuis votre galerie</div>
+        <span class="upload-limit">JPG · PNG · WEBP · Max 5MB/photo · 10 photos max</span>
+      </div>
+      <div class="field-error" id="err-photos" style="display:none;">Ajoutez au moins 3 photos</div>
+
+      <div class="photos-preview" id="photosPreview"></div>
+      <div class="photo-count" id="photoCount"></div>
+    </div>
+
+    <!-- SECTION 5 — Disponibilités -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">5</div> Disponibilités générales</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Jours d'ouverture</label>
+          <div class="equip-grid">
+            <label class="equip-option"><input type="checkbox" value="Lundi"><span class="equip-tag">Lun</span></label>
+            <label class="equip-option"><input type="checkbox" value="Mardi"><span class="equip-tag">Mar</span></label>
+            <label class="equip-option"><input type="checkbox" value="Mercredi"><span class="equip-tag">Mer</span></label>
+            <label class="equip-option"><input type="checkbox" value="Jeudi"><span class="equip-tag">Jeu</span></label>
+            <label class="equip-option"><input type="checkbox" value="Vendredi"><span class="equip-tag">Ven</span></label>
+            <label class="equip-option"><input type="checkbox" value="Samedi"><span class="equip-tag">Sam</span></label>
+            <label class="equip-option"><input type="checkbox" value="Dimanche"><span class="equip-tag">Dim</span></label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Horaires</label>
+          <div class="form-row">
+            <div>
+              <label style="font-size:0.72rem;color:var(--gris);">Ouverture</label>
+              <input type="time" class="form-input" id="heureOuv" value="08:00">
+            </div>
+            <div>
+              <label style="font-size:0.72rem;color:var(--gris);">Fermeture</label>
+              <input type="time" class="form-input" id="heureFerm" value="20:00">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Capacité maximale (personnes)</label>
+        <select class="form-select" id="capacite">
+          <option value="1-2">1 à 2 personnes</option>
+          <option value="3-5" selected>3 à 5 personnes</option>
+          <option value="5-10">5 à 10 personnes</option>
+          <option value="10+">Plus de 10 personnes</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SECTION 6 — Source + Message -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-num">6</div> Derniers détails</div>
+      <div class="form-group">
+        <label>Comment avez-vous connu StudioKay ?</label>
+        <div class="source-grid">
+          <label class="source-option"><input type="radio" name="source" value="Instagram"><span class="source-pill">📸 Instagram</span></label>
+          <label class="source-option"><input type="radio" name="source" value="WhatsApp"><span class="source-pill">💬 WhatsApp</span></label>
+          <label class="source-option"><input type="radio" name="source" value="Bouche à oreille"><span class="source-pill">🗣️ Bouche à oreille</span></label>
+          <label class="source-option"><input type="radio" name="source" value="Google"><span class="source-pill">🔍 Google</span></label>
+          <label class="source-option"><input type="radio" name="source" value="Un ami"><span class="source-pill">👥 Un ami</span></label>
+          <label class="source-option"><input type="radio" name="source" value="Autre"><span class="source-pill">✨ Autre</span></label>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Message libre (questions, précisions...)</label>
+        <textarea class="form-textarea" id="message" placeholder="Tout ce que vous souhaitez nous dire sur votre studio ou votre projet..." rows="3"></textarea>
+      </div>
+    </div>
+
+    <!-- SUBMIT -->
+    <button type="submit" class="submit-btn" id="submitBtn">
+      <span id="submitText">🚀 Envoyer ma demande</span>
+    </button>
+
+    <div class="form-footer" style="margin-top:16px;">
+      <p>Notre équipe vous recontacte sous <strong style="color:var(--creme);">48h ouvrées</strong> pour finaliser votre inscription.</p>
+      <p style="margin-top:6px;">📧 <span>kamsenconciergerie@gmail.com</span> · 📱 <span>+221 71 018 89 89</span></p>
+    </div>
+
+  </form>
+
+  <!-- SUCCESS -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">🎉</div>
+    <h2>Demande envoyée !</h2>
+    <p>Merci <strong id="successName"></strong> ! Votre demande pour <strong id="successStudio"></strong> a bien été reçue.<br>Notre équipe vous recontacte sous 48h à l'adresse <strong id="successEmail"></strong>.</p>
+    <p style="color:var(--gold);font-size:0.88rem;margin-bottom:28px;">🎁 Vous faites partie des studios pionniers — 6 mois gratuits vous attendent !</p>
+    <a href="/" class="back-btn">← Retour à StudioKay</a>
+  </div>
+
+</div>
+
+<script>
+// ── PRIX SLIDER ──
+function updatePrice(val) {
+  const num = parseInt(val);
+  document.getElementById('prix').value = num;
+  document.getElementById('priceDisplay').innerHTML = num.toLocaleString('fr-FR') + ' <span>XOF / heure</span>';
+}
+
+// ── UPLOAD PHOTOS ──
+let selectedFiles = [];
+
+const uploadZone = document.getElementById('uploadZone');
+const photosInput = document.getElementById('photosInput');
+const preview = document.getElementById('photosPreview');
+const photoCount = document.getElementById('photoCount');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  handleFiles([...e.dataTransfer.files]);
+});
+photosInput.addEventListener('change', e => handleFiles([...e.target.files]));
+
+function handleFiles(files) {
+  const validTypes = ['image/jpeg','image/png','image/webp'];
+  const maxSize = 5 * 1024 * 1024;
+  files.forEach(file => {
+    if (!validTypes.includes(file.type)) { alert(`${file.name} : format non supporté`); return; }
+    if (file.size > maxSize) { alert(`${file.name} : fichier trop lourd (max 5MB)`); return; }
+    if (selectedFiles.length >= 10) { alert('Maximum 10 photos'); return; }
+    if (selectedFiles.find(f => f.name === file.name && f.size === file.size)) return;
+    selectedFiles.push(file);
+  });
+  renderPreviews();
+  updateProgress();
+}
+
+function renderPreviews() {
+  preview.innerHTML = '';
+  selectedFiles.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.innerHTML = `<img src="${e.target.result}" alt="photo ${i+1}"><button class="remove-btn" onclick="removePhoto(${i})">✕</button>`;
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+  photoCount.textContent = selectedFiles.length > 0 ? `${selectedFiles.length} photo(s) sélectionnée(s)` : '';
+}
+
+function removePhoto(i) {
+  selectedFiles.splice(i, 1);
+  renderPreviews();
+  updateProgress();
+}
+
+// ── PROGRESS ──
+function updateProgress() {
+  const fields = ['nom','email','tel','studioNom','ville','description'];
+  let filled = fields.filter(id => document.getElementById(id)?.value?.trim()).length;
+  const typeOk = document.querySelector('input[name="type"]:checked') ? 1 : 0;
+  const photosOk = selectedFiles.length >= 1 ? 1 : 0;
+  const total = fields.length + 2;
+  const pct = Math.round(((filled + typeOk + photosOk) / total) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+document.querySelectorAll('.form-input, .form-select, .form-textarea').forEach(el => {
+  el.addEventListener('input', updateProgress);
+  el.addEventListener('change', updateProgress);
+});
+document.querySelectorAll('input[name="type"]').forEach(el => el.addEventListener('change', updateProgress));
+
+// ── VALIDATION ──
+function validate() {
+  let ok = true;
+  const rules = [
+    { id:'nom',         msg:'Veuillez entrer votre nom' },
+    { id:'email',       msg:'Email invalide',        check: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) },
+    { id:'tel',         msg:'Numéro requis' },
+    { id:'studioNom',   msg:'Nom du studio requis' },
+    { id:'ville',       msg:'Ville requise' },
+    { id:'description', msg:'Description requise' },
+  ];
+  rules.forEach(r => {
+    const el = document.getElementById(r.id);
+    const err = document.getElementById('err-' + r.id);
+    const val = el?.value?.trim();
+    const invalid = !val || (r.check && !r.check(val));
+    el?.classList.toggle('error', invalid);
+    if (err) { err.style.display = invalid ? 'block' : 'none'; }
+    if (invalid) ok = false;
+  });
+
+  const typeOk = document.querySelector('input[name="type"]:checked');
+  const typeErr = document.getElementById('err-type');
+  if (!typeOk) { typeErr.style.display='block'; ok=false; }
+  else { typeErr.style.display='none'; }
+
+  if (selectedFiles.length < 3) {
+    document.getElementById('err-photos').style.display = 'block';
+    ok = false;
+  } else {
+    document.getElementById('err-photos').style.display = 'none';
+  }
+  return ok;
+}
+
+// ── SUBMIT ──
+document.getElementById('studioForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  if (!validate()) {
+    document.querySelector('.error, [style*="display: block"]')?.scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span><span>Envoi en cours...</span>';
+
+  // Collecter équipements cochés
+  const equipements = [...document.querySelectorAll('.equip-option input:checked')].map(c => c.value);
+  const autreEquip = document.getElementById('autreEquip').value.trim();
+  if (autreEquip) equipements.push(autreEquip);
+
+  const jours = [...document.querySelectorAll('.form-section:nth-child(6) .equip-option input:checked')].map(c => c.value);
+
+  const formData = new FormData();
+  formData.append('nom',          document.getElementById('nom').value.trim());
+  formData.append('email',        document.getElementById('email').value.trim());
+  formData.append('tel',          document.getElementById('tel').value.trim());
+  formData.append('studioNom',    document.getElementById('studioNom').value.trim());
+  formData.append('ville',        document.getElementById('ville').value);
+  formData.append('type',         document.querySelector('input[name="type"]:checked').value);
+  formData.append('prix',         document.getElementById('prix').value);
+  formData.append('description',  document.getElementById('description').value.trim());
+  formData.append('equipements',  JSON.stringify(equipements));
+  formData.append('jours',        JSON.stringify(jours));
+  formData.append('heureOuv',     document.getElementById('heureOuv').value);
+  formData.append('heureFerm',    document.getElementById('heureFerm').value);
+  formData.append('capacite',     document.getElementById('capacite').value);
+  formData.append('source',       document.querySelector('input[name="source"]:checked')?.value || '');
+  formData.append('message',      document.getElementById('message').value.trim());
+
+  selectedFiles.forEach((file, i) => formData.append(`photo_${i}`, file, file.name));
+
+  try {
+    const r = await fetch('/api/proposer-studio-form', { method:'POST', body: formData });
+    const d = await r.json();
+
+    if (d.success) {
+      document.getElementById('studioForm').style.display = 'none';
+      document.getElementById('successName').textContent = document.getElementById('nom').value.split(' ')[0];
+      document.getElementById('successStudio').textContent = document.getElementById('studioNom').value;
+      document.getElementById('successEmail').textContent = document.getElementById('email').value;
+      document.getElementById('successScreen').style.display = 'block';
+      window.scrollTo({ top: 0, behavior:'smooth' });
+    } else {
+      throw new Error(d.message || 'Erreur serveur');
+    }
+  } catch(err) {
+    alert('Erreur lors de l\'envoi. Contactez-nous directement à kamsenconciergerie@gmail.com');
+    btn.disabled = false;
+    btn.innerHTML = '<span id="submitText">🚀 Envoyer ma demande</span>';
+  }
+});
+</script>
+</body>
+</html>
