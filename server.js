@@ -505,6 +505,251 @@ app.patch('/api/reservations/:id/annuler', authMiddleware, async (req, res) => {
 });
 
 // ══════════════════════════════════════
+// ── ROUTES DISPONIBILITÉS ──
+// ══════════════════════════════════════
+
+// GET /api/studios/:id/disponibilites — Créneaux occupés (déjà existant, on garde)
+// GET /api/studios/:id/horaires — Horaires récurrents du studio
+app.get('/api/studios/:id/horaires', async (req, res) => {
+  try {
+    if (!pool) return res.json({ success: true, data: [] });
+    const result = await pool.query(
+      'SELECT * FROM disponibilites_recurrentes WHERE studio_id = $1 AND actif = true ORDER BY jour_semaine, heure_debut',
+      [req.params.id]
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// POST /api/studios/:id/horaires — Définir les horaires récurrents (hôte uniquement)
+app.post('/api/studios/:id/horaires', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const studioId = parseInt(req.params.id);
+    const { horaires } = req.body;
+    // horaires = [{ jour_semaine: 1, heure_debut: "09:00", heure_fin: "20:00" }, ...]
+
+    if (!Array.isArray(horaires) || horaires.length === 0)
+      return res.status(400).json({ success: false, message: 'horaires requis (tableau)' });
+
+    const studio = await pool.query('SELECT hote_id FROM studios WHERE id = $1', [studioId]);
+    if (studio.rowCount === 0) return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    if (studio.rows[0].hote_id !== req.user.id && req.user.role !== 'admin')
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+
+    // Remplacer tous les horaires existants
+    await pool.query('UPDATE disponibilites_recurrentes SET actif = false WHERE studio_id = $1', [studioId]);
+
+    const inserted = [];
+    for (const h of horaires) {
+      if (h.jour_semaine < 0 || h.jour_semaine > 6 || !h.heure_debut || !h.heure_fin) continue;
+      const r = await pool.query(
+        `INSERT INTO disponibilites_recurrentes (studio_id, jour_semaine, heure_debut, heure_fin)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [studioId, h.jour_semaine, h.heure_debut, h.heure_fin]
+      );
+      inserted.push(r.rows[0]);
+    }
+    res.status(201).json({ success: true, data: inserted });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// GET /api/studios/:id/blocages — Blocages ponctuels
+app.get('/api/studios/:id/blocages', async (req, res) => {
+  try {
+    if (!pool) return res.json({ success: true, data: [] });
+    const { mois, annee } = req.query;
+    let query = 'SELECT * FROM blocages_ponctuels WHERE studio_id = $1';
+    const params = [req.params.id];
+    if (mois && annee) {
+      query += ` AND EXTRACT(MONTH FROM debut) = $2 AND EXTRACT(YEAR FROM debut) = $3`;
+      params.push(mois, annee);
+    }
+    query += ' ORDER BY debut ASC';
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// POST /api/studios/:id/blocages — Créer un blocage ponctuel (hôte uniquement)
+app.post('/api/studios/:id/blocages', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const studioId = parseInt(req.params.id);
+    const { debut, fin, motif, note } = req.body;
+    if (!debut || !fin) return res.status(400).json({ success: false, message: 'debut et fin requis' });
+
+    const studio = await pool.query('SELECT hote_id FROM studios WHERE id = $1', [studioId]);
+    if (studio.rowCount === 0) return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    if (studio.rows[0].hote_id !== req.user.id && req.user.role !== 'admin')
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+
+    const result = await pool.query(
+      `INSERT INTO blocages_ponctuels (studio_id, debut, fin, motif, note, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [studioId, debut, fin, motif || 'indisponible', note || null, req.user.id]
+    );
+    res.status(201).json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    if (err.code === 'P0001' || err.message.includes('conflicting'))
+      return res.status(409).json({ success: false, message: 'Ce créneau chevauche un blocage existant' });
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/studios/:id/blocages/:blocageId — Supprimer un blocage
+app.delete('/api/studios/:id/blocages/:blocageId', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const studio = await pool.query('SELECT hote_id FROM studios WHERE id = $1', [req.params.id]);
+    if (studio.rowCount === 0) return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    if (studio.rows[0].hote_id !== req.user.id && req.user.role !== 'admin')
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+
+    await pool.query('DELETE FROM blocages_ponctuels WHERE id = $1 AND studio_id = $2',
+      [req.params.blocageId, req.params.id]);
+    res.json({ success: true, message: 'Blocage supprimé' });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ══════════════════════════════════════
+// ── ROUTES AVIS / NOTES ──
+// ══════════════════════════════════════
+
+// GET /api/studios/:id/avis — Lister les avis approuvés d'un studio
+app.get('/api/studios/:id/avis', async (req, res) => {
+  try {
+    if (!pool) return res.json({ success: true, data: [], moyenne: null, total: 0 });
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+    const [avisResult, statsResult] = await Promise.all([
+      pool.query(
+        `SELECT a.id, a.note, a.commentaire, a.created_at,
+                u.id AS auteur_id, u.prenom, u.nom,
+                u.avatar_url
+         FROM avis a
+         JOIN users u ON u.id = a.auteur_id
+         WHERE a.studio_id = $1 AND a.statut = 'approuve'
+         ORDER BY a.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.params.id, limit, offset]
+      ),
+      pool.query(
+        `SELECT ROUND(AVG(note), 1) AS moyenne, COUNT(*) AS total
+         FROM avis WHERE studio_id = $1 AND statut = 'approuve'`,
+        [req.params.id]
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: avisResult.rows,
+      moyenne: parseFloat(statsResult.rows[0].moyenne) || null,
+      total: parseInt(statsResult.rows[0].total),
+      page: parseInt(page),
+    });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// POST /api/studios/:id/avis — Déposer un avis (utilisateur authentifié, après réservation)
+app.post('/api/studios/:id/avis', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const studioId = parseInt(req.params.id);
+    const { note, commentaire, reservation_id } = req.body;
+
+    if (!note || note < 1 || note > 5)
+      return res.status(400).json({ success: false, message: 'note doit être entre 1 et 5' });
+
+    // Vérifier que la réservation appartient à l'utilisateur et est terminée
+    if (reservation_id && pool) {
+      const resCheck = await pool.query(
+        `SELECT id FROM reservations
+         WHERE id = $1 AND client_id = $2 AND studio_id = $3 AND statut = 'terminee'`,
+        [reservation_id, req.user.id, studioId]
+      );
+      if (resCheck.rowCount === 0)
+        return res.status(403).json({ success: false, message: 'Réservation non éligible pour un avis' });
+    }
+
+    // Vérifier qu'il n'a pas déjà laissé un avis pour ce studio
+    const existing = await pool.query(
+      'SELECT id FROM avis WHERE studio_id = $1 AND auteur_id = $2',
+      [studioId, req.user.id]
+    );
+    if (existing.rowCount > 0)
+      return res.status(409).json({ success: false, message: 'Vous avez déjà laissé un avis pour ce studio' });
+
+    const result = await pool.query(
+      `INSERT INTO avis (studio_id, auteur_id, note, commentaire, reservation_id, statut)
+       VALUES ($1, $2, $3, $4, $5, 'en_attente') RETURNING *`,
+      [studioId, req.user.id, note, commentaire || null, reservation_id || null]
+    );
+    res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: 'Avis soumis, en attente de modération',
+    });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// PATCH /api/avis/:avisId — Modérer un avis (admin uniquement)
+app.patch('/api/avis/:avisId', adminMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const { statut, reponse_hote } = req.body;
+    const allowed = ['approuve', 'rejete', 'en_attente'];
+    if (statut && !allowed.includes(statut))
+      return res.status(400).json({ success: false, message: 'statut invalide' });
+
+    const updates = [];
+    const params = [];
+    let i = 1;
+    if (statut) { updates.push(`statut = $${i++}`); params.push(statut); }
+    if (reponse_hote !== undefined) { updates.push(`reponse_hote = $${i++}`); params.push(reponse_hote); }
+    if (updates.length === 0) return res.status(400).json({ success: false, message: 'Rien à mettre à jour' });
+
+    params.push(req.params.avisId);
+    const result = await pool.query(
+      `UPDATE avis SET ${updates.join(', ')} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Avis introuvable' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// PATCH /api/studios/:id/avis/:avisId/reponse — Hôte répond à un avis
+app.patch('/api/studios/:id/avis/:avisId/reponse', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const { reponse_hote } = req.body;
+    if (!reponse_hote) return res.status(400).json({ success: false, message: 'reponse_hote requis' });
+
+    const studio = await pool.query('SELECT hote_id FROM studios WHERE id = $1', [req.params.id]);
+    if (studio.rowCount === 0) return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    if (studio.rows[0].hote_id !== req.user.id && req.user.role !== 'admin')
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+
+    const result = await pool.query(
+      `UPDATE avis SET reponse_hote = $1, reponse_at = NOW()
+       WHERE id = $2 AND studio_id = $3 RETURNING *`,
+      [reponse_hote, req.params.avisId, req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Avis introuvable' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// DELETE /api/avis/:avisId — Supprimer un avis (admin uniquement)
+app.delete('/api/avis/:avisId', adminMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    await pool.query('DELETE FROM avis WHERE id = $1', [req.params.avisId]);
+    res.json({ success: true, message: 'Avis supprimé' });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ══════════════════════════════════════
 // ── ROUTES PHOTOS STUDIOS ──
 // ══════════════════════════════════════
 
@@ -749,18 +994,19 @@ app.get('/', (req, res) => {
 // ── ROUTES ADMIN ──
 // ══════════════════════════════════════
 
-// Middleware admin
+// Middleware admin — role 'admin' requis
 function adminMiddleware(req, res, next) {
-  // Pour l'instant on accepte tout token valide
-  // En production: vérifier role === 'admin'
   const auth = req.headers.authorization;
-  if (!auth) return next(); // accès libre pour démo
+  if (!auth || !auth.startsWith('Bearer '))
+    return res.status(401).json({ success: false, message: 'Non autorisé' });
   try {
     const decoded = jwt.verify(auth.split(' ')[1], JWT_SECRET);
+    if (decoded.role !== 'admin')
+      return res.status(403).json({ success: false, message: 'Accès réservé aux administrateurs' });
     req.user = decoded;
     next();
   } catch {
-    next();
+    res.status(401).json({ success: false, message: 'Token invalide' });
   }
 }
 
@@ -1064,6 +1310,151 @@ app.post('/api/proposer-studio-form', (req, res) => {
 // Servir le formulaire
 app.get('/proposer', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'formulaire-studio.html'));
+});
+
+// ══════════════════════════════════════
+// ── ROUTES PAIEMENTS — WAVE SÉNÉGAL ──
+// ══════════════════════════════════════
+
+const WAVE_API_URL = 'https://api.wave.com/v1';
+const WAVE_API_KEY = process.env.WAVE_API_KEY || '';
+
+// POST /api/paiements/wave/initier — Créer une session de paiement Wave
+app.post('/api/paiements/wave/initier', authMiddleware, async (req, res) => {
+  try {
+    const { reservation_id, montant, devise = 'XOF' } = req.body;
+    if (!montant || montant <= 0)
+      return res.status(400).json({ success: false, message: 'montant invalide' });
+
+    const idempotencyKey = `wave_${req.user.id}_${reservation_id || Date.now()}_${Date.now()}`;
+    const appUrl = process.env.APP_URL || 'https://studiokay-production.up.railway.app';
+
+    const wavePayload = {
+      currency: devise,
+      amount:   String(montant),
+      error_url:   `${appUrl}/paiement/erreur`,
+      success_url: `${appUrl}/paiement/succes?ref=${idempotencyKey}`,
+      client_reference: idempotencyKey,
+    };
+
+    let waveData = null;
+    if (WAVE_API_KEY) {
+      const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+      const resp = await fetch(`${WAVE_API_URL}/checkout/sessions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${WAVE_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(wavePayload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        return res.status(502).json({ success: false, message: 'Erreur Wave', details: err });
+      }
+      waveData = await resp.json();
+    } else {
+      // Mode sandbox — simuler une réponse Wave pour les tests locaux
+      waveData = {
+        id: `wave_test_${idempotencyKey}`,
+        wave_launch_url: `https://pay.wave.com/m/test?amount=${montant}&currency=${devise}`,
+        client_reference: idempotencyKey,
+        amount: montant,
+        currency: devise,
+        payment_status: 'pending',
+      };
+    }
+
+    // Enregistrer le paiement en base
+    if (pool) {
+      await pool.query(
+        `INSERT INTO paiements
+         (reservation_id, client_id, montant, devise, fournisseur, statut, idempotency_key, provider_reference, webhook_payload)
+         VALUES ($1, $2, $3, $4, 'wave', 'en_attente', $5, $6, $7)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [
+          reservation_id || null,
+          req.user.id,
+          montant,
+          devise,
+          idempotencyKey,
+          waveData.id || null,
+          JSON.stringify(waveData),
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      wave_launch_url: waveData.wave_launch_url,
+      reference: idempotencyKey,
+      montant,
+      devise,
+    });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// POST /api/paiements/wave/webhook — Recevoir les notifications Wave
+app.post('/api/paiements/wave/webhook', async (req, res) => {
+  try {
+    // Vérification basique de l'authenticité Wave (l'IP source + secret header)
+    const waveSecret = process.env.WAVE_WEBHOOK_SECRET;
+    if (waveSecret && req.headers['x-wave-signature'] !== waveSecret)
+      return res.status(401).json({ success: false, message: 'Signature invalide' });
+
+    const { client_reference, payment_status, amount, currency } = req.body;
+
+    if (!client_reference) return res.status(400).json({ success: false, message: 'client_reference manquant' });
+
+    if (pool) {
+      const statutMap = {
+        succeeded:  'succes',
+        failed:     'echoue',
+        cancelled:  'annule',
+        processing: 'en_attente',
+      };
+      const statut = statutMap[payment_status] || 'en_attente';
+
+      await pool.query(
+        `UPDATE paiements
+         SET statut = $1, webhook_payload = $2, updated_at = NOW()
+         WHERE idempotency_key = $3`,
+        [statut, JSON.stringify(req.body), client_reference]
+      );
+
+      // Si paiement réussi → confirmer la réservation
+      if (statut === 'succes') {
+        const pmt = await pool.query(
+          'SELECT reservation_id FROM paiements WHERE idempotency_key = $1',
+          [client_reference]
+        );
+        if (pmt.rows[0]?.reservation_id) {
+          await pool.query(
+            "UPDATE reservations SET statut = 'confirmee' WHERE id = $1 AND statut = 'en_attente'",
+            [pmt.rows[0].reservation_id]
+          );
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// GET /api/paiements/statut/:reference — Vérifier le statut d'un paiement
+app.get('/api/paiements/statut/:reference', authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ success: false, message: 'Base non connectée' });
+    const result = await pool.query(
+      `SELECT id, statut, montant, devise, fournisseur, created_at, updated_at
+       FROM paiements WHERE idempotency_key = $1 AND client_id = $2`,
+      [req.params.reference, req.user.id]
+    );
+    if (result.rowCount === 0)
+      return res.status(404).json({ success: false, message: 'Paiement introuvable' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // ── INIT DB ──
