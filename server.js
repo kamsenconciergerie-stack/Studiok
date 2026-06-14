@@ -1,16 +1,33 @@
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5*1024*1024, files:10 } });
+require('dotenv').config();
 const express    = require('express');
 const path       = require('path');
 const fs         = require('fs');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
-require('dotenv').config();
+const rateLimit  = require('express-rate-limit');
+const pool       = require('./config/database');
+const { uploadStudioPhotos, getPhotoVariants } = require('./config/cloudinary');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'studiokay_secret_2025';
+
+// ── RATE LIMITING ──
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  message: { success: false, message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+});
 
 // ── HEADERS SÉCURITÉ ──
 app.use((req, res, next) => {
@@ -36,17 +53,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
     res.setHeader('Expires', '0');
   }
 }));
-
-// ── PostgreSQL ──
-let pool = null;
-if (process.env.DATABASE_URL) {
-  const { Pool } = require('pg');
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-  });
-  console.log('📦 PostgreSQL activé');
-}
 
 // ── Nodemailer ──
 let transporter = null;
@@ -144,7 +150,7 @@ async function sendUnavailableEmail(to, data) {
 // ══════════════════════════════════════
 
 // Inscription
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { nom, email, password, telephone, role } = req.body;
     if (!nom || !email || !password)
@@ -179,7 +185,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Connexion
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password)
@@ -498,6 +504,240 @@ app.patch('/api/reservations/:id/annuler', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// ══════════════════════════════════════
+// ── ROUTES PHOTOS STUDIOS ──
+// ══════════════════════════════════════
+
+// POST /api/studios/:id/photos — Upload photos d'un studio existant
+app.post('/api/studios/:id/photos', authMiddleware, (req, res) => {
+  uploadStudioPhotos(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ success: false, message: uploadErr.message });
+    }
+
+    try {
+      const studioId = parseInt(req.params.id);
+      if (isNaN(studioId)) {
+        return res.status(400).json({ success: false, message: 'ID studio invalide' });
+      }
+
+      // Vérifier que le studio existe et appartient à l'utilisateur (ou admin)
+      if (pool) {
+        const check = await pool.query(
+          'SELECT id, hote_id FROM studios WHERE id = $1 AND deleted_at IS NULL',
+          [studioId]
+        );
+        if (check.rowCount === 0) {
+          return res.status(404).json({ success: false, message: 'Studio introuvable' });
+        }
+        const studio = check.rows[0];
+        if (studio.hote_id && studio.hote_id !== req.user.id && req.user.role !== 'admin') {
+          return res.status(403).json({ success: false, message: 'Non autorisé' });
+        }
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ success: false, message: 'Aucune photo reçue' });
+      }
+
+      // Vérifier s'il y a déjà une photo de couverture
+      let hasCover = false;
+      let currentCount = 0;
+      if (pool) {
+        const countRes = await pool.query(
+          'SELECT COUNT(*) as total, BOOL_OR(est_couverture) as has_cover FROM studio_photos WHERE studio_id = $1',
+          [studioId]
+        );
+        hasCover = countRes.rows[0].has_cover || false;
+        currentCount = parseInt(countRes.rows[0].total) || 0;
+      }
+
+      // Construire les entrées à insérer
+      const photosToInsert = req.files.map((file, idx) => {
+        const variants = getPhotoVariants(file.filename);
+        return {
+          studio_id:     studioId,
+          url:           file.path,            // URL originale Cloudinary
+          url_thumb:     variants.thumb,
+          url_medium:    variants.medium,
+          nom_fichier:   file.originalname,
+          ordre:         currentCount + idx,
+          est_couverture: !hasCover && idx === 0, // 1re photo = couverture si pas encore de couverture
+        };
+      });
+
+      let savedPhotos = [];
+
+      if (pool) {
+        // Insertion en base avec une seule requête multi-valeurs
+        const values = photosToInsert.map((p, i) => {
+          const base = i * 7;
+          return `($${base+1}, $${base+2}, $${base+3}, $${base+4}, $${base+5}, $${base+6}, $${base+7})`;
+        }).join(', ');
+
+        const params = photosToInsert.flatMap(p => [
+          p.studio_id, p.url, p.url_thumb, p.url_medium,
+          p.nom_fichier, p.ordre, p.est_couverture,
+        ]);
+
+        const result = await pool.query(
+          `INSERT INTO studio_photos (studio_id, url, url_thumb, url_medium, nom_fichier, ordre, est_couverture)
+           VALUES ${values}
+           RETURNING *`,
+          params
+        );
+        savedPhotos = result.rows;
+      }
+
+      res.status(201).json({
+        success: true,
+        message: `${req.files.length} photo(s) uploadée(s) avec succès`,
+        data: savedPhotos.length > 0 ? savedPhotos : photosToInsert,
+      });
+
+    } catch (err) {
+      console.error('Erreur upload photos:', err.message);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+});
+
+// GET /api/studios/:id/photos — Lister les photos d'un studio
+app.get('/api/studios/:id/photos', async (req, res) => {
+  try {
+    const studioId = parseInt(req.params.id);
+    if (isNaN(studioId)) {
+      return res.status(400).json({ success: false, message: 'ID studio invalide' });
+    }
+
+    if (pool) {
+      const result = await pool.query(
+        'SELECT * FROM studio_photos WHERE studio_id = $1 ORDER BY est_couverture DESC, ordre ASC',
+        [studioId]
+      );
+      return res.json({ success: true, count: result.rowCount, data: result.rows });
+    }
+
+    res.json({ success: true, count: 0, data: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/studios/:id/photos/:photoId — Supprimer une photo
+app.delete('/api/studios/:id/photos/:photoId', authMiddleware, async (req, res) => {
+  try {
+    const studioId = parseInt(req.params.id);
+    const photoId  = req.params.photoId;
+
+    if (!pool) {
+      return res.status(503).json({ success: false, message: 'Base de données non connectée' });
+    }
+
+    // Vérifier l'appartenance du studio
+    const studioCheck = await pool.query(
+      'SELECT hote_id FROM studios WHERE id = $1 AND deleted_at IS NULL',
+      [studioId]
+    );
+    if (studioCheck.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    }
+    const studio = studioCheck.rows[0];
+    if (studio.hote_id && studio.hote_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+    }
+
+    // Récupérer la photo avant suppression (pour supprimer sur Cloudinary)
+    const photoRes = await pool.query(
+      'SELECT * FROM studio_photos WHERE id = $1 AND studio_id = $2',
+      [photoId, studioId]
+    );
+    if (photoRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Photo introuvable' });
+    }
+    const photo = photoRes.rows[0];
+
+    // Supprimer de la base
+    await pool.query('DELETE FROM studio_photos WHERE id = $1', [photoId]);
+
+    // Si c'était la couverture, promouvoir la photo suivante
+    if (photo.est_couverture) {
+      await pool.query(
+        `UPDATE studio_photos
+         SET est_couverture = true
+         WHERE studio_id = $1 AND id = (
+           SELECT id FROM studio_photos WHERE studio_id = $1 ORDER BY ordre ASC LIMIT 1
+         )`,
+        [studioId]
+      );
+    }
+
+    // Supprimer de Cloudinary (extraire le public_id depuis l'URL)
+    try {
+      const { cloudinary } = require('./config/cloudinary');
+      // public_id = tout ce qui est entre le cloud_name et l'extension dans l'URL
+      const urlParts = photo.url.split('/');
+      const uploadIndex = urlParts.findIndex(p => p === 'upload');
+      if (uploadIndex !== -1) {
+        // Retirer la version (v1234567890) si présente
+        const afterUpload = urlParts.slice(uploadIndex + 1);
+        if (afterUpload[0].startsWith('v')) afterUpload.shift();
+        const publicIdWithExt = afterUpload.join('/');
+        const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ''); // retirer l'extension
+        await cloudinary.uploader.destroy(publicId);
+      }
+    } catch (cdnErr) {
+      console.warn('Suppression Cloudinary échouée (non bloquant):', cdnErr.message);
+    }
+
+    res.json({ success: true, message: 'Photo supprimée' });
+  } catch (err) {
+    console.error('Erreur suppression photo:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/studios/:id/photos/:photoId/couverture — Définir comme photo de couverture
+app.patch('/api/studios/:id/photos/:photoId/couverture', authMiddleware, async (req, res) => {
+  try {
+    const studioId = parseInt(req.params.id);
+    const photoId  = req.params.photoId;
+
+    if (!pool) {
+      return res.status(503).json({ success: false, message: 'Base de données non connectée' });
+    }
+
+    const studioCheck = await pool.query(
+      'SELECT hote_id FROM studios WHERE id = $1 AND deleted_at IS NULL',
+      [studioId]
+    );
+    if (studioCheck.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Studio introuvable' });
+    }
+    const studio = studioCheck.rows[0];
+    if (studio.hote_id && studio.hote_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Non autorisé' });
+    }
+
+    // Retirer l'ancienne couverture, définir la nouvelle
+    await pool.query(
+      'UPDATE studio_photos SET est_couverture = false WHERE studio_id = $1',
+      [studioId]
+    );
+    const result = await pool.query(
+      'UPDATE studio_photos SET est_couverture = true WHERE id = $1 AND studio_id = $2 RETURNING *',
+      [photoId, studioId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Photo introuvable' });
+    }
+
+    res.json({ success: true, message: 'Photo de couverture mise à jour', data: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ── PAGE PRINCIPALE ──
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -707,8 +947,11 @@ app.get('/api/admin/reset-studios', async (req, res) => {
 
 
 // ── FORMULAIRE PROPOSITION STUDIO (avec photos) ──
-app.post('/api/proposer-studio-form', upload.any(), async (req, res) => {
+app.post('/api/proposer-studio-form', (req, res) => {
+  uploadStudioPhotos(req, res, async (uploadErr) => {
   try {
+    if (uploadErr) return res.status(400).json({ success: false, message: uploadErr.message });
+
     const { nom, tel, email, studioNom, ville, type, prix, description,
             equipements, jours, heureOuv, heureFerm, capacite, source, message } = req.body;
 
@@ -719,12 +962,14 @@ app.post('/api/proposer-studio-form', upload.any(), async (req, res) => {
     const equips = JSON.parse(equipements || '[]');
     const joursOuv = JSON.parse(jours || '[]');
 
+    // URLs Cloudinary persistantes (plus de buffer mémoire)
+    const photoUrls = photos.map(f => f.path);
+
     if (transporter) {
-      // Préparer les pièces jointes
-      const attachments = photos.map((f, i) => ({
-        filename: `studio_${i+1}_${f.originalname}`,
-        content: f.buffer,
-        contentType: f.mimetype
+      // Pièces jointes remplacées par liens Cloudinary (plus légères pour l'email)
+      const attachments = photoUrls.map((url, i) => ({
+        filename: `studio_${i+1}.jpg`,
+        path: url,
       }));
 
       // Email à l'équipe StudioKay
@@ -813,6 +1058,7 @@ app.post('/api/proposer-studio-form', upload.any(), async (req, res) => {
     console.error('Erreur formulaire studio:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
+  }); // fin uploadStudioPhotos callback
 });
 
 // Servir le formulaire

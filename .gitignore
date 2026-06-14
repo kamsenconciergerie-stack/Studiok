@@ -1,0 +1,19 @@
+# Dépendances
+node_modules/
+
+# Variables d'environnement — NE JAMAIS COMMITTER
+.env
+.env.local
+.env.production
+
+# Données locales (fallback dev)
+data/reservations.json
+data/users.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
