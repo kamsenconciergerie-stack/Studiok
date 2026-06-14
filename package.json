@@ -1,7 +1,7 @@
 {
   "name": "studiokay",
   "version": "2.0.0",
-  "description": "Plateforme de r\u00e9servation de studios cr\u00e9atifs au S\u00e9n\u00e9gal",
+  "description": "Plateforme de réservation de studios créatifs au Sénégal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -15,6 +15,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
     "jsonwebtoken": "^9.0.2",
+    "mkdirp": "^1.0.4",
     "multer": "^1.4.5-lts.1",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^6.9.14",
